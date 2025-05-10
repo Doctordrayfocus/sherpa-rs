@@ -54,20 +54,29 @@ fn copy_file(src: PathBuf, dst: PathBuf) {
     }
 }
 
-fn get_cargo_target_dir() -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
-    let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR")?);
-    let profile = std::env::var("PROFILE")?;
-    let mut target_dir = None;
-    let mut sub_path = out_dir.as_path();
-    while let Some(parent) = sub_path.parent() {
-        if parent.ends_with(&profile) {
-            target_dir = Some(parent);
-            break;
+fn get_cargo_target_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    // Try using OUT_DIR (build script context)
+    if let Ok(out_dir) = env::var("OUT_DIR") {
+        if let Ok(profile) = env::var("PROFILE") {
+            let mut sub_path = Path::new(&out_dir);
+            while let Some(parent) = sub_path.parent() {
+                if parent.ends_with(&profile) {
+                    return Ok(parent.to_path_buf());
+                }
+                sub_path = parent;
+            }
         }
-        sub_path = parent;
     }
-    let target_dir = target_dir.ok_or("not found")?;
-    Ok(target_dir.to_path_buf())
+
+    // Fallback: runtime context
+    let target = env::var("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            // Assume we're in a Cargo project, so "target/" is in the project root
+            env::current_dir().unwrap().join("target")
+        });
+
+    Ok(target)
 }
 
 fn delete_folder(src: &Path) -> std::io::Result<()> {
